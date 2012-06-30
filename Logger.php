@@ -13,6 +13,8 @@
  * If you want to stop logging temporarily, just execute Logger's 
  * pauseLogger() method.
  *
+ * Once you are finished, just print_r($logger->liveObjects);
+ *
  * IMPORTANT:
  * The logger will not function properly unless Sebastian Bergmann's 
  * php-test-helpers module is enabled in php.ini.
