@@ -1,9 +1,9 @@
 <?php
 /*
  * This project is comprised of two components:
- * - A logger proxy class that acts as a proxy to any particular object.
+ * - A logger proxy class that acts as a proxy to every newly created object.
  * - A container logger class which holds bound logger proxies, allowing you to
- *   inspect their state and call their methods.
+ *   inspect their state and call their methods if you like.
  *
  * To begin, run this before the instantiation of the objects that you 
  * wish to capture:
@@ -23,7 +23,6 @@
  */
 
 class LoggerProxy {
-    private static $_initialized = false;
     private static $_excludedNames = false;
 
     public function __construct() {
@@ -33,7 +32,7 @@ class LoggerProxy {
         self::$_excludedNames = get_class_methods($self);
         array_push(get_class_vars($self), self::$_excludedNames);
 
-        if (self::$_initialized != true) {
+        if (!property_exists($this, "_initializedLogger")) {
             // Initialize an associative array to keep track of method calls
             $this->_history = array();
 
@@ -50,6 +49,7 @@ class LoggerProxy {
             // that I could pass the className to here straight from 
             // the callback
             $className = end($logger->_intercepted);
+            /// print_r(debug_backtrace());
             $this->obj = new $className;
             if (!isset($this->obj)) {
                 throw new Exception("Error: Cannot create {$className} object");
@@ -61,11 +61,13 @@ class LoggerProxy {
             // Finally, re-bind the logger's callback to the 'new' statement
             $logger->startLogger();
 
-            self::$_initialized = true;
+            $this->_initializedLogger = true;
             return true;
         }
 
-        throw new Exception("Logger object already initialized");
+        echo "Logger Proxy object already initialized";
+        //print_r(debug_backtrace());
+        die();
     }
 
     public function setEvent($type, $data) {
@@ -83,7 +85,7 @@ class LoggerProxy {
         // 1. Is not a class variable or method
         // 2. LoggerProxy's constructor has been executed
         // 
-        if ( self::$_initialized == true ) {
+        if (property_exists($this, "_initializedLogger")) {
             if (!in_array($methodOrProperty, self::$_excludedNames)) {
                 return false;
             }
@@ -97,7 +99,7 @@ class LoggerProxy {
             $this->setEvent("call", array("method" => $method, "args" => $arguments));
 
             // Call the proxied object's method with the specified arguments
-            call_user_func_array(array($this->obj, $method), $arguments);
+            return call_user_func_array(array($this->obj, $method), $arguments);
         }
     }
 
@@ -107,7 +109,11 @@ class LoggerProxy {
             array_push($this->_history, $entry);
 
             // Return the proxied object's property
-            return $this->obj->$property;
+            if (!isset($this->obj->$property)) {
+                return array();
+            } else {
+                return $this->obj->$property;
+            }
         }
 
         // Not sure whether this is required
@@ -163,7 +169,6 @@ class Logger {
     public function intercept($className) {
         $this->_intercepted[] = $className;
         return "LoggerProxy";
-        return $className;
     }
 
     public function pauseLogger() {
