@@ -157,7 +157,16 @@ class LoggerProxy {
 class Logger {
     private static $uniqueInstance;
 
-    protected function __construct() {} 
+    protected function __construct() {
+        if (!extension_loaded('test_helpers')) {
+            echo "This logger will not work without the test_helpers extension. ";
+            echo "Download the and compile the latest version from ";
+            echo "https://github.com/sebastianbergmann/php-test-helpers\n";
+
+            exit(1);
+        }
+    } 
+
     private final function __clone() {}
 
     public static function getInstance() {
