@@ -180,9 +180,20 @@ class Logger {
     }
 
     public function intercept($className) {
+        // This array will be used in the constructor of the proxy
+        // object to instantiate the reference object __ref$className
         $this->_intercepted[] = $className;
+
+        // Pause the logger so that our various uses of reflection
+        // etc don't interfere
         self::pauseLogger();
+
+        // Create a reference object __ref$className which resembles
+        // $className, and overload the magic methods of the object
+        // possessing the original name.
         createLogHelper($className);
+
+        // Restart the logger, since our work here is done.
         self::startLogger();
         return $className;
     }

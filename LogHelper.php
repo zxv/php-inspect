@@ -1,18 +1,18 @@
 <?php
 
 class LogHelper {
-    private static $_excludedNames = false;
+    //private static $_excludedNames = false;
 
     public function __construct() {
-        // Create a list of names which should not be proxied.
+        // Create a list of properties and methods which should not be proxied.
         // This is checked using $this->_isExcluded() in the magic methods.
         $self = get_class();
-        self::$_excludedNames = get_class_methods($self);
-        array_push(get_class_vars($self), self::$_excludedNames);
+        $this->_excludedNames = get_class_methods($self);
+        array_push(get_class_vars($self), $this->_excludedNames);
 
         if (!property_exists($this, "_initializedLogger")) {
             // Initialize an associative array to keep track of method calls
-            $this->_history = array();
+            $this->__history = array();
 
             // Get the logger singleton
             $logger = Logger::getInstance();
@@ -22,16 +22,17 @@ class LogHelper {
 
             // Get the most recent class name from those intercepted,
             // instantiate a new instance of it.
-            
+            //
             // I don't like how this is currently handled. I wish
             // that I could pass the className to here straight from 
             // the callback
             $className = end($logger->_intercepted);
 
-            // Instantiate the object. paramHint can be replaced if this method is
-            // appended via runkit
-            $this->obj = new $className(/*paramHint*/);
-            if (!isset($this->obj)) {
+            // Instantiate the reference object. paramHint can be replaced if 
+            // this method is appended via runkit
+            $newClass = '__ref'.$className;
+            $this->__obj = new $newClass(/*paramHint*/);
+            if (!isset($this->__obj)) {
                 throw new Exception("Error: Cannot create {$className} object");
             }
 
@@ -39,14 +40,11 @@ class LogHelper {
             $logger->liveObjects[] = $this;
 
             // Finally, re-bind the logger's callback to the 'new' statement
-            //$logger->startLogger();
-
             $this->_initializedLogger = true;
             return true;
         }
 
         echo "Log Helper object already initialized";
-        //print_r(debug_backtrace());
         die();
     }
 }
@@ -160,14 +158,12 @@ function prepareMethodsArray($srcClassName) {
 }
 
 function runkitTransplantMethod($className, $methodName, $srcValues) {
-    $src = str_replace("/*paramHint*/", $srcValues['params'], $srcValues["src"]);
-    $src = rtrim($src, "}");
     runkit_method_add($className, $methodName, $srcValues["paramsDefault"], $src);
 }
 
 function cloneConstructor($srcClassName, $destClassName, $constructorParams) {
     // XXX This function could be streamlined.
-    $constructorParams["src"] = getSource($srcClassName, "__construct"); 
+    //$constructorParams["src"] = getSource($srcClassName, "__construct"); 
     echo "DEBUG: Adding logger __construct({$constructorParams['paramsDefault']}) to $destClassName\n";
     runkitTransplantMethod($destClassName, "__construct", $constructorParams);
 }
@@ -183,13 +179,23 @@ function transplantMethods($destClassName, $methods) {
     $methods = implode(", ", array_keys($methods));
     echo "DEBUG: Creating methods {$methods} on $destClassName\n";
     $evalStr = "class $destClassName { $finalsrc }";
-    print_r($finalsrc);
     //echo $evalStr;
     eval($evalStr);
 }
 
+function setupLoggerConstructor($className, $values) {
+    $logHelperSrc = getSource("LogHelper", "__construct"); 
+    $logHelperSrc = str_replace("/*paramHint*/", $values['params'], $logHelperSrc);
+    $logHelperSrc = rtrim($logHelperSrc, "}");
+
+
+    runkit_method_add($className, "__construct", $values['paramsDefault'], $logHelperSrc);
+}
+
 function setLoggerMethods($srcClassName, $destClassName, $methods) {
     //XXX: Only method calls are logged currently. Add properties.
+
+    #cloneConstructor("LoggerHelper", $srcClassName, $methods["__construct"]);
 
     foreach ($methods as $method => $data) {
         // Get rid of the original methods, since we've already transplanted them
@@ -198,13 +204,14 @@ function setLoggerMethods($srcClassName, $destClassName, $methods) {
         runkit_method_remove($srcClassName, $method);
     }
     // XXX: Abstract the evals to use the source file parsing funcs for convenience
-    runkit_method_add($srcClassName, "__construct", "", "echo \"DEBUG: Creating logger...\n\"; \$this->obj=new $destClassName;");
+    //runkit_method_add($srcClassName, "__construct", $methods["__construct"]["paramsDefault"], "echo \"DEBUG: Creating logger...\n\"; \$this->obj=new $destClassName({$methods["__construct"]["params"]});");
+    ////runkit_method_add($srcClassName, "__construct", $methods["__construct"]["paramsDefault"], "echo \"DEBUG: Creating logger...\n\"; print_r(func_get_args()); ");
+    setupLoggerConstructor($srcClassName, $methods['__construct']);
 
     // Clone the constructor from LogHelper to class with original name,
     // while preserving arguments
-    //cloneConstructor("LoggerHelper", $srcClassName, $methods["__construct"]);
     //runkit_method_add($srcClassName, "__construct", "\$method, \$args", "echo \"Calling \$method on $destClassName\"; call_user_func_array(array(\$this->obj, \$method), \$args);");
-    runkit_method_add($srcClassName, "__call", "\$method, \$args", "echo \"Calling \$method on $destClassName\"; call_user_func_array(array(\$this->obj, \$method), \$args);");
+    #runkit_method_add($srcClassName, "__call", "\$method, \$args", "echo \"Calling \$method on $destClassName\"; call_user_func_array(array(\$this->obj, \$method), \$args);");
 }
  
 function createLogHelper($className) {
@@ -213,6 +220,8 @@ function createLogHelper($className) {
     if (strstr($className, '__ref')) {
         return;
     }
+    print "DEBUG: Intercepting new $className\n";
+
 
     $destClassName = "__ref".$className;
     
@@ -226,5 +235,4 @@ function createLogHelper($className) {
     // Each call will be dispatched to the '__ref' prefixed object.
     // Additionally, remove all the original methods so that __call() is invoked.
     setLoggerMethods($className, $destClassName, $methods);
-
 }
