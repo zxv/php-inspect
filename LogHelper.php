@@ -1,4 +1,56 @@
 <?php
+
+class LogHelper {
+    private static $_excludedNames = false;
+
+    public function __construct() {
+        // Create a list of names which should not be proxied.
+        // This is checked using $this->_isExcluded() in the magic methods.
+        $self = get_class();
+        self::$_excludedNames = get_class_methods($self);
+        array_push(get_class_vars($self), self::$_excludedNames);
+
+        if (!property_exists($this, "_initializedLogger")) {
+            // Initialize an associative array to keep track of method calls
+            $this->_history = array();
+
+            // Get the logger singleton
+            $logger = Logger::getInstance();
+
+            // Pause the logger to avoid an infinite loop
+            //$logger->pauseLogger();
+
+            // Get the most recent class name from those intercepted,
+            // instantiate a new instance of it.
+            
+            // I don't like how this is currently handled. I wish
+            // that I could pass the className to here straight from 
+            // the callback
+            $className = end($logger->_intercepted);
+
+            // Instantiate the object. paramHint can be replaced if this method is
+            // appended via runkit
+            $this->obj = new $className(/*paramHint*/);
+            if (!isset($this->obj)) {
+                throw new Exception("Error: Cannot create {$className} object");
+            }
+
+            // Append the current instance to live objects list in logger instance
+            $logger->liveObjects[] = $this;
+
+            // Finally, re-bind the logger's callback to the 'new' statement
+            //$logger->startLogger();
+
+            $this->_initializedLogger = true;
+            return true;
+        }
+
+        echo "Log Helper object already initialized";
+        //print_r(debug_backtrace());
+        die();
+    }
+}
+
 function getSource($src, $method) {
     // based on http://stackoverflow.com/questions/7026690/reconstruct-get-code-of-php-function
 
@@ -21,7 +73,11 @@ function getSource($src, $method) {
     //echo "\n\n\n\n";
     //echo $filename;
     $source = file($filename);
-    $body = implode("", array_slice($source, $startLine, $length));
+    $slice = array_slice($source, $startLine, $length);
+
+    // Remove comments
+    $slice = array_map(function($x) {return explode("//", $x)[0]; }, $slice);
+    $body = implode("", $slice);
 
     // XXX: Not sure if necessary
     $body = str_replace(array("\r", "\n"), "", $body);
@@ -31,7 +87,7 @@ function getSource($src, $method) {
     return $body;
 }
 
-function prepareParametersString($refMethod) {
+function prepareParametersString($refMethod, $printDefaultValues=true) {
     // Prepare reflection parameters
     $refParams = $refMethod->getParameters();
     $paramCount = count($refParams);
@@ -40,12 +96,23 @@ function prepareParametersString($refMethod) {
     // Iterate over each parameter
     foreach ($refParams as $refParam) {
         $param = $refParam->name;
-        $position = $refParam->getPosition() + 1;
 
-        // Spit out default params, if there are any
-        if ($refParam->isOptional()) {
-            $paramsOut[] = "\${$param}={$refParam->getDefaultValue()}";
-            continue;
+        if ($printDefaultValues == true) {
+            $position = $refParam->getPosition() + 1;
+
+            // Spit out default params, if there are any
+            if ($refParam->isOptional()) {
+                $paramValue = $refParam->getDefaultValue();
+                $paramType = gettype($paramValue);
+                
+                // If param is a string, wrap it in quotes
+                if ($paramType == "string") {
+                    $paramValue = "'{$paramValue}'";
+                }
+
+                $paramsOut[] = "\${$param}={$paramValue}";
+                continue;
+            }
         }
 
         if ($refParam->getClass()) {
@@ -81,41 +148,62 @@ function prepareMethodsArray($srcClassName) {
         // Get a comma-seperated string of parameters, wrap them in
         // a method definition. Note that all your methods
         // just became public.
-        $params = prepareParametersString($refMethod); 
-        $paramStr = "public function $method({$params}) {";
+        $params = prepareParametersString($refMethod, false); 
+        $paramsDefault = prepareParametersString($refMethod); 
+        $methodHeader = "public function $method({$paramsDefault}) {";
 
         // Return the two components mentioned above, indexed by method name
-        $objectArray[$method] = array('paramStr' => $paramStr, 'src' => $source);
+        // XXX: Only send one of the params vars, processing on other end
+        $objectArray[$method] = array("params" => $params, "paramsDefault" => $paramsDefault, 'methodHeader' => $methodHeader, 'src' => $source);
     }
     return $objectArray;
+}
+
+function runkitTransplantMethod($className, $methodName, $srcValues) {
+    $src = str_replace("/*paramHint*/", $srcValues['params'], $srcValues["src"]);
+    $src = rtrim($src, "}");
+    runkit_method_add($className, $methodName, $srcValues["paramsDefault"], $src);
+}
+
+function cloneConstructor($srcClassName, $destClassName, $constructorParams) {
+    // XXX This function could be streamlined.
+    $constructorParams["src"] = getSource($srcClassName, "__construct"); 
+    echo "DEBUG: Adding logger __construct({$constructorParams['paramsDefault']}) to $destClassName\n";
+    runkitTransplantMethod($destClassName, "__construct", $constructorParams);
 }
 
 function transplantMethods($destClassName, $methods) {
     $finalsrc = "";
 
-    foreach($methods as $values) {
+    foreach($methods as $method => $values) {
         // Concatenate function definition and single-line source
-        $finalsrc .=  " ".$values['paramStr'].$values['src']." ";
+        $finalsrc .=  " ".$values['methodHeader'].$values['src']." ";
     }
+
     $methods = implode(", ", array_keys($methods));
     echo "DEBUG: Creating methods {$methods} on $destClassName\n";
     $evalStr = "class $destClassName { $finalsrc }";
+    print_r($finalsrc);
     //echo $evalStr;
     eval($evalStr);
 }
 
-function setLoggerMethods($srcClassName, $destClassName, $methodNames) {
+function setLoggerMethods($srcClassName, $destClassName, $methods) {
     //XXX: Only method calls are logged currently. Add properties.
 
-    foreach ($methodNames as $method) {
+    foreach ($methods as $method => $data) {
         // Get rid of the original methods, since we've already transplanted them
         // This will allow us to invoke __call()
         echo "DEBUG: Removing $srcClassName::$method()\n";
         runkit_method_remove($srcClassName, $method);
     }
-    // XXX: Replacing the constructor, are ya? What about the old one and its params?
     // XXX: Abstract the evals to use the source file parsing funcs for convenience
     runkit_method_add($srcClassName, "__construct", "", "echo \"DEBUG: Creating logger...\n\"; \$this->obj=new $destClassName;");
+
+    // Clone the constructor from LogHelper to class with original name,
+    // while preserving arguments
+    //cloneConstructor("LoggerHelper", $srcClassName, $methods["__construct"]);
+    //runkit_method_add($srcClassName, "__construct", "\$method, \$args", "echo \"Calling \$method on $destClassName\"; call_user_func_array(array(\$this->obj, \$method), \$args);");
     runkit_method_add($srcClassName, "__call", "\$method, \$args", "echo \"Calling \$method on $destClassName\"; call_user_func_array(array(\$this->obj, \$method), \$args);");
 }
  
@@ -137,5 +225,6 @@ function createLogHelper($className) {
     // Bind the logging __call() method to the class with the original name.
     // Each call will be dispatched to the '__ref' prefixed object.
     // Additionally, remove all the original methods so that __call() is invoked.
-    setLoggerMethods($className, $destClassName, array_keys($methods));
+    setLoggerMethods($className, $destClassName, $methods);
+
 }
