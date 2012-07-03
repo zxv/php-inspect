@@ -1,5 +1,7 @@
 <?php
 
+define('DEBUG', false);
+
 class LogHelper {
 
     public function __construct() {
@@ -127,6 +129,12 @@ class LogHelper {
 
 }
 
+function debugMsg($msg) {
+    if (DEBUG == true) {
+        echo "$msg\n";
+    }
+}
+
 function getSource($src, $method) {
     // based on http://stackoverflow.com/questions/7026690/reconstruct-get-code-of-php-function
 
@@ -246,8 +254,9 @@ function transplantMethods($destClassName, $methods) {
     }
 
     $methods = implode(", ", array_keys($methods));
-    echo "DEBUG: Creating methods {$methods} on $destClassName\n";
+    debugMsg("Creating methods {$methods} on $destClassName");
     $evalStr = "class $destClassName { $finalsrc }";
+    //print $evalStr;
     eval($evalStr);
 }
 
@@ -275,7 +284,7 @@ function setLoggerMethods($srcClassName, $destClassName, $methods) {
     foreach ($methods as $method => $data) {
         // Get rid of the original methods, since we've already transplanted them
         // This will allow us to invoke __call()
-        echo "DEBUG: Removing $srcClassName::$method()\n";
+        debugMsg("Removing $srcClassName::$method()");
         runkit_method_remove($srcClassName, $method);
     }
 
@@ -291,7 +300,7 @@ function createLogHelper($className) {
     if (strstr($className, '__ref')) {
         return;
     }
-    print "DEBUG: Intercepting new $className\n";
+    debugMsg("Intercepting new $className");
 
 
     $destClassName = "__ref".$className;
