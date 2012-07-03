@@ -154,18 +154,27 @@ function getSource($src, $method) {
     $length = $endLine - $startLine;
 
     // Slice and dice the source file
-    //echo "\n\n\n\n";
-    //echo $filename;
     $source = file($filename);
     $slice = array_slice($source, $startLine, $length);
 
     // Remove comments
     $slice = array_map(function($x) {return explode("//", $x)[0]; }, $slice);
+
+    // Strip the trailing curly braces from the captured source.
+    $firstLine = ltrim($slice[0]);
+    $firstLine = ltrim($firstLine, "{");
+    $slice[0] = $firstLine;
+
+    $lastKey = key(array_slice($slice, -1, 1, TRUE)); // OH GOD PHP WHY
+    $lastLine = rtrim($slice[$lastKey]);
+    $lastLine = rtrim($lastLine, "}");
+    $slice[$lastKey] = $lastLine;
+
     $body = implode("", $slice);
 
+
     // XXX: Not sure if necessary
-    $body = str_replace(array("\r", "\n"), "", $body);
-    //$body = rtrim($body, "}"); 
+    //$body = str_replace(array("\r", "\n"), "", $body);
 
     // The prize: source code of $method
     return $body;
@@ -184,6 +193,7 @@ function prepareParametersString($refMethod, $printDefaultValues=true) {
         if ($printDefaultValues == true) {
             $position = $refParam->getPosition() + 1;
 
+        
             // Spit out default params, if there are any
             if ($refParam->isOptional()) {
                 $paramValue = $refParam->getDefaultValue();
@@ -192,6 +202,11 @@ function prepareParametersString($refMethod, $printDefaultValues=true) {
                 // If param is a string, wrap it in quotes
                 if ($paramType == "string") {
                     $paramValue = "'{$paramValue}'";
+                }
+
+                // If param is null, escape it as such
+                if (is_null($paramValue)) {
+                    $paramValue = 'null';
                 }
 
                 $paramsOut[] = "\${$param}={$paramValue}";
@@ -236,7 +251,7 @@ function sourceArray($srcClassName) {
         // just became public.
         $params = prepareParametersString($refMethod, false); 
         $paramsDefault = prepareParametersString($refMethod); 
-        $methodHeader = "public function $method({$paramsDefault}) {";
+        $methodHeader = "public function $method({$paramsDefault})";
 
         // Return the two components mentioned above, indexed by method name
         // XXX: Only send one of the params vars, processing on other end
@@ -247,10 +262,15 @@ function sourceArray($srcClassName) {
 
 function transplantMethods($destClassName, $methods) {
     $finalsrc = "";
+    $closeBrace = "";
 
     foreach($methods as $method => $values) {
         // Concatenate function definition and single-line source
-        $finalsrc .=  " ".$values['methodHeader'].$values['src']." ";
+        $finalsrc .=  " ".$values['methodHeader']." { ".$values['src']." } ";
+
+        if ($closeBrace == "") {
+            $closeBrace = "}";
+        }
     }
 
     $methods = implode(", ", array_keys($methods));
@@ -273,9 +293,7 @@ function injectLogHelper($className, $values) {
             $newparams = $mValues['params'];
         }
 
-        // Strip the trailing curly brace from the captured source.
-        $newsrc = rtrim($newsrc, "}");
-
+        print 1;
         runkit_method_add($className, $method, $newparams, $newsrc);
     }
 }
