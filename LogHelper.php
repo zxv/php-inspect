@@ -82,6 +82,26 @@ class LogHelper {
         }
     }
 
+    public static function __callStatic($method, $arguments) {
+/*
+      // from http://stackoverflow.com/questions/1279382/magic-get-getter-for-static-properties-in-php
+      $mainClass = get_class($this->__obj);
+
+      if (preg_match('/^([gs]et)([A-Z])(.*)$/', $method, $match)) {
+        $reflector = new \ReflectionClass($mainClass);
+        $property = strtolower($match[2]). $match[3];
+        if ($reflector->hasProperty($property)) {
+          $property = $reflector->getProperty($property);
+          switch($match[1]) {
+            case 'get': return $property->getValue();
+            case 'set': return $property->setValue($args[0]);
+          }     
+        } else throw new InvalidArgumentException("Property {$property} doesn't exist");
+      }
+*/
+
+    }
+
     public function __get($property) {
         if (!$this->_isExcluded($property)) {
             $this->setEvent("get", array("property" => $property));
@@ -251,11 +271,19 @@ function sourceArray($srcClassName) {
         // just became public.
         $params = prepareParametersString($refMethod, false); 
         $paramsDefault = prepareParametersString($refMethod); 
-        $methodHeader = "public function $method({$paramsDefault})";
+        if ($method == "__callStatic") {
+            // unconfirmed as of yet
+            $methodHeader = "public static function $method({$paramsDefault})";
+        } else {
+            $methodHeader = "public function $method({$paramsDefault})";
+        }
+        
+        // unconfirmed
+        $isStatic = $refMethod->isStatic();
 
         // Return the two components mentioned above, indexed by method name
         // XXX: Only send one of the params vars, processing on other end
-        $objectArray[$method] = array("params" => $params, "paramsDefault" => $paramsDefault, 'methodHeader' => $methodHeader, 'src' => $source);
+        $objectArray[$method] = array("params" => $params, "paramsDefault" => $paramsDefault, 'methodHeader' => $methodHeader, 'src' => $source, 'isStatic' => $isStatic);
     }
     return $objectArray;
 }
@@ -293,7 +321,6 @@ function injectLogHelper($className, $values) {
             $newparams = $mValues['params'];
         }
 
-        print 1;
         runkit_method_add($className, $method, $newparams, $newsrc);
     }
 }
@@ -303,7 +330,9 @@ function setLoggerMethods($srcClassName, $destClassName, $methods) {
         // Get rid of the original methods, since we've already transplanted them
         // This will allow us to invoke __call()
         debugMsg("Removing $srcClassName::$method()");
-        runkit_method_remove($srcClassName, $method);
+        if ($data['isStatic'] != true) {
+            runkit_method_remove($srcClassName, $method);
+        }
     }
 
     // Clone the constructor from LogHelper to class with original name,
