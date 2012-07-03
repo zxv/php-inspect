@@ -1,7 +1,6 @@
 <?php
 
 class LogHelper {
-    //private static $_excludedNames = false;
 
     public function __construct() {
         // Create a list of properties and methods which should not be proxied.
@@ -47,6 +46,85 @@ class LogHelper {
         echo "Log Helper object already initialized";
         die();
     }
+
+    public function setEvent($type, $data) {
+        // Log an event to the logger's internal array.
+        // $type is a string, and $data is an associative array.
+        
+        $entry = array($type => $data);
+        array_push($this->__history, $entry);
+    }
+
+    private function _isExcluded($methodOrProperty) {
+        // Determine whether a method or property is to be proxied.
+        //
+        // Conditions to avoid exclusion:
+        // 1. Is not a LogHelper variable or method
+        // 2. LoggerProxy's constructor has been executed
+        // 
+        if (property_exists($this, "_initializedLogger")) {
+            if (!in_array($methodOrProperty, $this->_excludedNames)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public function __call($method, $arguments) {
+        if (!$this->_isExcluded($method)) {
+            $this->setEvent("call", array("method" => $method, "args" => $arguments));
+
+            // Call the proxied object's method with the specified arguments
+            return call_user_func_array(array($this->__obj, $method), $arguments);
+        }
+    }
+
+    public function __get($property) {
+        if (!$this->_isExcluded($property)) {
+            $this->setEvent("get", array("property" => $property));
+
+            // Return the proxied object's property
+            if (!isset($this->__obj->$property)) {
+                return array();
+            } else {
+                return $this->__obj->$property;
+            }
+        }
+
+        // Not sure whether this is required
+        //return $this->$property;
+    }
+
+    public function __set($property, $value) {
+        if (!$this->_isExcluded($property)) {
+            $this->setEvent("set", array("property" => $property, "value" => $value));
+
+            // Set the proxied object's property
+            $this->__obj->$property = $value;
+
+            // We've set the object's property where it needs to stored.
+            // Now we prevent the setting of default property of the LogHelper
+            return true;
+
+        }
+
+        $this->$property = $value;
+    }
+
+    public function __unset($property) {
+        if (!$this->_isExcluded($property)) {
+            $this->setEvent("unset", array("property" => $property));
+
+            // Unset the proxied object's property
+            unset($this->__obj->$property);
+            return;
+        }
+
+        // Not sure whether this is required
+        // unset($this->$property);
+    }
+
 }
 
 function getSource($src, $method) {
@@ -130,8 +208,10 @@ function prepareParametersString($refMethod, $printDefaultValues=true) {
     return $finalParams;
 }
 
-function prepareMethodsArray($srcClassName) {
-    // Get an array of each method
+function sourceArray($srcClassName) {
+    // Process a classname, iterating over each of its methods.
+    // Returns an array which contains method source and args.
+
     $ref = new ReflectionClass($srcClassName);
     $refMethods = $ref->getMethods();
 
@@ -157,17 +237,6 @@ function prepareMethodsArray($srcClassName) {
     return $objectArray;
 }
 
-function runkitTransplantMethod($className, $methodName, $srcValues) {
-    runkit_method_add($className, $methodName, $srcValues["paramsDefault"], $src);
-}
-
-function cloneConstructor($srcClassName, $destClassName, $constructorParams) {
-    // XXX This function could be streamlined.
-    //$constructorParams["src"] = getSource($srcClassName, "__construct"); 
-    echo "DEBUG: Adding logger __construct({$constructorParams['paramsDefault']}) to $destClassName\n";
-    runkitTransplantMethod($destClassName, "__construct", $constructorParams);
-}
-
 function transplantMethods($destClassName, $methods) {
     $finalsrc = "";
 
@@ -179,39 +248,41 @@ function transplantMethods($destClassName, $methods) {
     $methods = implode(", ", array_keys($methods));
     echo "DEBUG: Creating methods {$methods} on $destClassName\n";
     $evalStr = "class $destClassName { $finalsrc }";
-    //echo $evalStr;
     eval($evalStr);
 }
 
-function setupLoggerConstructor($className, $values) {
-    $logHelperSrc = getSource("LogHelper", "__construct"); 
-    $logHelperSrc = str_replace("/*paramHint*/", $values['params'], $logHelperSrc);
-    $logHelperSrc = rtrim($logHelperSrc, "}");
+function injectLogHelper($className, $values) {
+    $srcLogHelper = sourceArray("LogHelper"); 
 
+    foreach ($srcLogHelper as $method => $mValues) {
+        if ($method == "__construct") {
+            $newsrc = str_replace("/*paramHint*/", $values['params'], $mValues['src']);
 
-    runkit_method_add($className, "__construct", $values['paramsDefault'], $logHelperSrc);
+            $newparams = $values['paramsDefault'];
+        } else {
+            $newsrc = $mValues['src'];
+            $newparams = $mValues['params'];
+        }
+
+        // Strip the trailing curly brace from the captured source.
+        $newsrc = rtrim($newsrc, "}");
+
+        runkit_method_add($className, $method, $newparams, $newsrc);
+    }
 }
 
 function setLoggerMethods($srcClassName, $destClassName, $methods) {
-    //XXX: Only method calls are logged currently. Add properties.
-
-    #cloneConstructor("LoggerHelper", $srcClassName, $methods["__construct"]);
-
     foreach ($methods as $method => $data) {
         // Get rid of the original methods, since we've already transplanted them
         // This will allow us to invoke __call()
         echo "DEBUG: Removing $srcClassName::$method()\n";
         runkit_method_remove($srcClassName, $method);
     }
-    // XXX: Abstract the evals to use the source file parsing funcs for convenience
-    //runkit_method_add($srcClassName, "__construct", $methods["__construct"]["paramsDefault"], "echo \"DEBUG: Creating logger...\n\"; \$this->obj=new $destClassName({$methods["__construct"]["params"]});");
-    ////runkit_method_add($srcClassName, "__construct", $methods["__construct"]["paramsDefault"], "echo \"DEBUG: Creating logger...\n\"; print_r(func_get_args()); ");
-    setupLoggerConstructor($srcClassName, $methods['__construct']);
 
     // Clone the constructor from LogHelper to class with original name,
     // while preserving arguments
-    //runkit_method_add($srcClassName, "__construct", "\$method, \$args", "echo \"Calling \$method on $destClassName\"; call_user_func_array(array(\$this->obj, \$method), \$args);");
-    #runkit_method_add($srcClassName, "__call", "\$method, \$args", "echo \"Calling \$method on $destClassName\"; call_user_func_array(array(\$this->obj, \$method), \$args);");
+    injectLogHelper($srcClassName, $methods['__construct']);
+
 }
  
 function createLogHelper($className) {
@@ -226,13 +297,13 @@ function createLogHelper($className) {
     $destClassName = "__ref".$className;
     
     // Get a list of methods to be transplanted from original class
-    $methods = prepareMethodsArray($className);
+    $srcOriginal = sourceArray($className);
 
     // Create a '__ref' prefixed class that resembles the old one
-    transplantMethods($destClassName, $methods);
+    transplantMethods($destClassName, $srcOriginal);
 
     // Bind the logging __call() method to the class with the original name.
     // Each call will be dispatched to the '__ref' prefixed object.
     // Additionally, remove all the original methods so that __call() is invoked.
-    setLoggerMethods($className, $destClassName, $methods);
+    setLoggerMethods($className, $destClassName, $srcOriginal);
 }
