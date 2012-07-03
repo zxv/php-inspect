@@ -24,6 +24,8 @@
  *
  */
 
+require("LogHelper.php");
+
 class LoggerProxy {
     private static $_excludedNames = false;
 
@@ -179,7 +181,10 @@ class Logger {
 
     public function intercept($className) {
         $this->_intercepted[] = $className;
-        return "LoggerProxy";
+        self::pauseLogger();
+        createLogHelper($className);
+        self::startLogger();
+        return $className;
     }
 
     public function pauseLogger() {
