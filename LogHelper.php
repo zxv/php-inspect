@@ -82,7 +82,9 @@ class LogHelper {
         }
     }
 
-    public static function __callStatic($method, $arguments) {
+    static public function __callsStatic($method, $arguments) {
+        echo "Static method called.";
+        die();
 /*
       // from http://stackoverflow.com/questions/1279382/magic-get-getter-for-static-properties-in-php
       $mainClass = get_class($this->__obj);
@@ -311,11 +313,19 @@ function transplantMethods($destClassName, $methods) {
 function injectLogHelper($className, $values) {
     $srcLogHelper = sourceArray("LogHelper"); 
 
+    $params = "";
+    $newparams = "";
+    if (array_key_exists("__construct", $values)) {
+        $cValues = $values["__construct"];
+        $params = $cValues['params'];
+        $newparams = $cValues['paramsDefault'];
+    }
+
     foreach ($srcLogHelper as $method => $mValues) {
         if ($method == "__construct") {
-            $newsrc = str_replace("/*paramHint*/", $values['params'], $mValues['src']);
+            // set calling parameters of reference object
+            $newsrc = str_replace("/*paramHint*/", $params, $mValues['src']);
 
-            $newparams = $values['paramsDefault'];
         } else {
             $newsrc = $mValues['src'];
             $newparams = $mValues['params'];
@@ -337,7 +347,7 @@ function setLoggerMethods($srcClassName, $destClassName, $methods) {
 
     // Clone the constructor from LogHelper to class with original name,
     // while preserving arguments
-    injectLogHelper($srcClassName, $methods['__construct']);
+    injectLogHelper($srcClassName, $methods);
 
 }
  
