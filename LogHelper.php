@@ -259,6 +259,7 @@ function sourceArray($srcClassName) {
 
     $ref = new ReflectionClass($srcClassName);
     $refMethods = $ref->getMethods();
+    // Possible replacement: get_class_methods()?
 
     $objectArray = array();
     foreach ($refMethods as $refMethod) {
@@ -366,6 +367,7 @@ function createLogHelper($className) {
     $srcOriginal = sourceArray($className);
 
     // Create a '__ref' prefixed class that resembles the old one
+    // Possible replacement? class_alias($className, $destClassName);
     transplantMethods($destClassName, $srcOriginal);
 
     // Bind the logging __call() method to the class with the original name.
