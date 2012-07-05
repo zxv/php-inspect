@@ -34,6 +34,19 @@ class Logger {
         return self::$uniqueInstance;
     }
 
+    public function __error($errno, $errmsg, $filename, $linenum, $vars) {
+        die("You've been bad!");
+    }
+
+    public function __errorFatal() {
+        print_r(func_get_args());
+        $err = error_get_last();
+        print_r(debug_backtrace());
+        print_r($err);
+        debug_print_backtrace();
+        die("You've been badder");        
+    }
+
     public function intercept($className) {
         // This array will be used in the constructor of the Log Helper
         // object to instantiate the reference object __refClassName
@@ -43,10 +56,16 @@ class Logger {
         // etc don't interfere
         self::pauseLogger();
 
+        // Binds an error handler as a hack to trigger events on static
+        // calls and static property set/get
+        #self::setErrorHandler();
+
         // Create a reference object __refClassName which resembles
         // $className, and overload the magic methods of the object
         // possessing the original name.
         createLogHelper($className);
+
+        #self::restoreErrorHandler();
 
         // Restart the logger, since our work here is done.
         self::startLogger();
@@ -55,6 +74,15 @@ class Logger {
 
     public function pauseLogger() {
         unset_new_overload();
+    }
+
+    public function setErrorHandler($callback='__error') {
+        set_error_handler(array($this, $callback));
+        register_shutdown_function(array($this, '__errorFatal'));
+    }
+
+    public function restoreErrorHandler() {
+        restore_error_handler();
     }
 
     public function startLogger($callback='intercept') {
