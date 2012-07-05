@@ -1,60 +1,36 @@
 <?php
 
-define('DEBUG', false);
+define('DEBUG', true);
 
 class LogHelper {
 
     public function __construct() {
-        // Create a list of properties and methods which should not be proxied.
-        // This is checked using $this->_isExcluded() in the magic methods.
-        $self = get_class();
-        $this->_excludedNames = get_class_methods($self);
-        array_push(get_class_vars($self), $this->_excludedNames);
 
-        if (!property_exists($this, "_initializedLogger")) {
+        if (!property_exists($this, "__history")) {
+            $logger = Logger::getInstance();
+            
             // Initialize an associative array to keep track of method calls
             $this->__history = array();
 
-            // Get the logger singleton
-            $logger = Logger::getInstance();
-
-            // Pause the logger to avoid an infinite loop
-            //$logger->pauseLogger();
-
-            // Get the most recent class name from those intercepted,
-            // instantiate a new instance of it.
-            //
-            // I don't like how this is currently handled. I wish
-            // that I could pass the className to here straight from 
-            // the callback
-            $className = end($logger->_intercepted);
-
-            // Instantiate the reference object. paramHint can be replaced if 
-            // this method is appended via runkit
-            $newClass = '__ref'.$className;
-            $this->__obj = new $newClass(/*paramHint*/);
-            if (!isset($this->__obj)) {
-                throw new Exception("Error: Cannot create {$className} object");
-            }
-
             // Append the current instance to live objects list in logger instance
             $logger->liveObjects[] = $this;
+            //$logger->liveObjects[] = $this;
 
             // Finally, re-bind the logger's callback to the 'new' statement
-            $this->_initializedLogger = true;
-            return true;
+            //return true;
         }
 
-        echo "Log Helper object already initialized";
-        die();
+        //echo "Log Helper object already initialized";
+        //die();
     }
 
     public function setEvent($type, $data) {
         // Log an event to the logger's internal array.
         // $type is a string, and $data is an associative array.
-        
-        $entry = array($type => $data);
-        array_push($this->__history, $entry);
+        //
+        // Enhancement idea: names of args
+        $data = array("method" => '/*method*/', "args" => func_get_args());
+        array_push($this->__history, array("call" => $data));
     }
 
     private function _isExcluded($methodOrProperty) {
@@ -337,9 +313,9 @@ function injectLogHelper($className, $values) {
 }
 
 function setLoggerMethods($srcClassName, $destClassName, $methods) {
+    // Get rid of the original methods, since we've already transplanted them
+    // This will allow us to invoke __call().
     foreach ($methods as $method => $data) {
-        // Get rid of the original methods, since we've already transplanted them
-        // This will allow us to invoke __call()
         debugMsg("Removing $srcClassName::$method()");
         if ($data['isStatic'] != true) {
             runkit_method_remove($srcClassName, $method);
@@ -350,6 +326,24 @@ function setLoggerMethods($srcClassName, $destClassName, $methods) {
     // while preserving arguments
     injectLogHelper($srcClassName, $methods);
 
+}
+
+function injectMethodLogger($className, $srcOriginal) {
+    $setEvent = getSource("LogHelper", "setEvent");
+
+    foreach ($srcOriginal as $method => $values) {
+        if ($method == "__construct") {
+            $toInject = getSource("LogHelper", "__construct");
+            // $toInject['src'];
+        } else {
+            $toInject = str_replace('/*method*/', $method, $setEvent);
+        }
+
+        debugMsg("Injecting logger code into $className::{$method}");
+        $newcode = $toInject." ".$values['src'];
+
+        runkit_method_redefine($className, $method, $values['paramsDefault'], $newcode);
+    }
 }
  
 function createLogHelper($className) {
@@ -366,12 +360,16 @@ function createLogHelper($className) {
     // Get a list of methods to be transplanted from original class
     $srcOriginal = sourceArray($className);
 
+
+    // 
+    injectMethodLogger($className, $srcOriginal);
+
     // Create a '__ref' prefixed class that resembles the old one
     // Possible replacement? class_alias($className, $destClassName);
-    transplantMethods($destClassName, $srcOriginal);
+    //transplantMethods($destClassName, $srcOriginal);
 
     // Bind the logging __call() method to the class with the original name.
     // Each call will be dispatched to the '__ref' prefixed object.
     // Additionally, remove all the original methods so that __call() is invoked.
-    setLoggerMethods($className, $destClassName, $srcOriginal);
+    //setLoggerMethods($className, $destClassName, $srcOriginal);
 }
