@@ -29,7 +29,8 @@ class LogHelper {
         // $type is a string, and $data is an associative array.
         //
         // Enhancement idea: names of args
-        $data = array("method" => '/*method*/', "args" => func_get_args());
+        $method = '/*method*/';
+        $data = array("method" => $method, "args" => func_get_args());
         array_push($this->__history, array("call" => $data));
     }
 
