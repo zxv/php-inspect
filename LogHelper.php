@@ -157,7 +157,8 @@ function getSource($src, $method) {
     $slice = array_slice($source, $startLine, $length);
 
     // Remove comments
-    $slice = array_map(function($x) {return explode("//", $x)[0]; }, $slice);
+    // Avoid clashing with protocols (e.g. php://)
+    $slice = array_map(function($x) {$match = preg_split( "/(?<!:)\/\//", $x); return $match[0]; }, $slice);
 
     // Strip the trailing curly braces from the captured source.
     $firstLine = ltrim($slice[0]);
