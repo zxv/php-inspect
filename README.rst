@@ -1,14 +1,14 @@
 PHP Inspect 
 ===========
 
-This project is comprised of two components:
+This project allows you to monitor each new object that is created.
 
-- A LogHelper, whose magic methods are inject into the original object.
-  before this takes place, the original object is stored in __refClassName,
-  where ClassName is the original name of the class being logged.
+When logging, each object's methods calls are captured (along with arguments), 
+and an instance of every object is saved into Logger::$liveObjects. From there, 
+you can inspect objects' state, and call their methods if you like.
 
-- A Logger singleton which contains each LogHelper, allowing you to
-  inspect their state and call their methods if you like.
+Getting Started
+===============
 
 To begin, run this before the instantiation of the objects that you 
 wish to capture:
@@ -21,9 +21,6 @@ wish to capture:
 After you've invoked the logger, every time the "new" keyword is used, 
 the logger will insert code into each of your objects' methods that monitors
 method calls into $this->__history for that object. 
-
-When logging, each method's call arguments are captured, and an instance of
-every object is saved into Logger::$liveObjects.
 
 Once you're done logging:
 
