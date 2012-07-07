@@ -205,6 +205,9 @@ function prepareParametersString($refMethod, $printDefaultValues=true) {
                 $paramValue = $refParam->getDefaultValue();
                 $paramType = gettype($paramValue);
                 
+                // What follows is a number of special cases for
+                // default argument types
+
                 // If param is a string, wrap it in quotes
                 if ($paramType == "string") {
                     $paramValue = "'{$paramValue}'";
@@ -223,12 +226,19 @@ function prepareParametersString($refMethod, $printDefaultValues=true) {
                     $paramValue = 'true';
                 }
 
+                if (gettype($paramValue) == "array") {
+                    $paramValue = var_export($paramValue, true);
+                    $hint = "array ";
+                } else {
+                    $hint = '';
+                }
+
                 // debug helper
                 //if ($err == true) {
                 //    print $paramValue;
                 //}
 
-                $paramsOut[] = "\${$param}={$paramValue}";
+                $paramsOut[] = "{$hint}\${$param}={$paramValue}";
                 continue;
             }
         }
