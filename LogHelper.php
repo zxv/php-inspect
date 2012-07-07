@@ -266,6 +266,7 @@ function sourceArray($srcClassName) {
     // Returns an array which contains method source and args.
 
     $ref = new ReflectionClass($srcClassName);
+
     $refMethods = $ref->getMethods();
     // Possible replacement: get_class_methods()?
 
@@ -276,21 +277,21 @@ function sourceArray($srcClassName) {
         // Get a string of a method's source, in a single line.
         // XXX: Y u no cache file
         $source = getSource($srcClassName, $method);
+        
+        // Check to determine whether the method being inspected is static
+        $isStatic = $refMethod->isStatic();
 
         // Get a comma-seperated string of parameters, wrap them in
         // a method definition. Note that all your methods
         // just became public.
         $params = prepareParametersString($refMethod, false); 
         $paramsDefault = prepareParametersString($refMethod); 
-        if ($method == "__callStatic") {
+        if ($isStatic) {
             // unconfirmed as of yet
             $methodHeader = "public static function $method({$paramsDefault})";
         } else {
             $methodHeader = "public function $method({$paramsDefault})";
         }
-        
-        // unconfirmed
-        $isStatic = $refMethod->isStatic();
 
         // Return the two components mentioned above, indexed by method name
         // XXX: Only send one of the params vars, processing on other end
@@ -371,10 +372,17 @@ function injectMethodLogger($className, $srcOriginal) {
             $toInject = str_replace('/*method*/', $method, $setEvent);
         }
 
-        debugMsg("Injecting logger code into $className::{$method}");
-        $newcode = $toInject." ".$values['src'];
+        $oldSrc = $values['src'];
+        $newcode = $toInject." ".$oldSrc;
 
-        runkit_method_redefine($className, $method, $values['paramsDefault'], $newcode);
+        $isStatic = $values['isStatic'];
+
+        // For now, only non-static calls are logged
+        if (!$isStatic) {
+            debugMsg("Injecting logger code into $className::{$method}");
+
+            runkit_method_redefine($className, $method, $values['paramsDefault'], $newcode);
+        }
     }
 }
  
