@@ -180,6 +180,13 @@ function getSource($src, $method) {
 }
 
 function prepareParametersString($refMethod, $printDefaultValues=true) {
+    /*
+    // debug helper
+    if ($refMethod->name == "") {
+        $err = true;
+    } else {
+        $err = false;
+    }*/
     // Prepare reflection parameters
     $refParams = $refMethod->getParameters();
     $paramCount = count($refParams);
@@ -207,6 +214,19 @@ function prepareParametersString($refMethod, $printDefaultValues=true) {
                 if (is_null($paramValue)) {
                     $paramValue = 'null';
                 }
+
+                if ($paramValue === false) {
+                    $paramValue = 'false';
+                }
+
+                if ($paramValue === true) {
+                    $paramValue = 'true';
+                }
+
+                // debug helper
+                //if ($err == true) {
+                //    print $paramValue;
+                //}
 
                 $paramsOut[] = "\${$param}={$paramValue}";
                 continue;
