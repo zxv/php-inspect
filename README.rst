@@ -3,8 +3,8 @@ PHP Inspect
 
 This project allows you to monitor each new object that is created.
 
-When logging, each object's methods calls are captured (along with arguments), 
-and an instance of every object is saved into Logger::$liveObjects. From there, 
+When logging, each object's method calls are monitored (along with arguments), 
+and their instance is saved into Logger::$liveObjects. From there, 
 you can inspect objects' state, and call their methods if you like.
 
 Getting Started
