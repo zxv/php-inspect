@@ -18,10 +18,24 @@ wish to capture:
     $logger = Logger::getInstance();
     $logger->startLogger();
 
-If you want to stop logging temporarily, just execute Logger's 
-pauseLogger() method.
+After you've invoked the logger, every time the "new" keyword is used, 
+the logger will insert code into each of your objects' methods that monitors
+method calls into $this->__history for that object. 
 
-Once you are finished capturing events, try print_r($logger->liveObjects);
+When logging, each method's call arguments are captured, and an instance of
+every object is saved into Logger::$liveObjects.
+
+Once you're done logging:
+
+::
+
+    $logger->pauseLogger()
+
+Finally, to see the fruits of your logging: 
+
+::
+
+    print_r($logger->liveObjects);
 
 IMPORTANT NOTE
 --------------
