@@ -134,7 +134,7 @@ function debugMsg($msg) {
     }
 }
 
-function getSource($src, $method) {
+function getSource($src, $method, $filename=null) {
     // based on http://stackoverflow.com/questions/7026690/reconstruct-get-code-of-php-function
 
     // Get class name if passed in as object
@@ -146,8 +146,11 @@ function getSource($src, $method) {
     $refClass = new ReflectionClass($src);
     $refMethod = $refClass->getMethod($method);
 
+    if ($filename == null) {
+        $filename = $refMethod->getFileName();
+    }
+
     // Source-grabbing range
-    $filename = $refMethod->getFileName();
     $startLine = $refMethod->getStartLine();
     $endLine = $refMethod->getEndLine();
     $length = $endLine - $startLine;
@@ -276,7 +279,15 @@ function sourceArray($srcClassName) {
 
         // Get a string of a method's source, in a single line.
         // XXX: Y u no cache file
-        $source = getSource($srcClassName, $method);
+        $filename = $refMethod->getFileName();
+        if (!empty($filename)) {
+            $source = getSource($srcClassName, $method, $filename);
+        } else {
+            // We presume that if no filename is found, the method is
+            // built-in and we are unconcerned with it
+            debugMsg("Skipping builtin method $method");
+            continue;
+        }
         
         // Check to determine whether the method being inspected is static
         $isStatic = $refMethod->isStatic();
@@ -403,8 +414,14 @@ function createLogHelper($className) {
     if (strstr($className, '__ref')) {
         return;
     }
-    debugMsg("Intercepting new $className");
 
+    // XXX: Expensive call (hell, hasn't stopped me yet)
+    if (DEBUG == true) {
+        $dbg = debug_backtrace();
+        $lineNumber = $dbg[1]['line'];
+        $fileName = $dbg[1]['file'];
+        debugMsg("Intercepting new $className on line $lineNumber of $fileName");
+    }
 
     $destClassName = "__ref".$className;
     
