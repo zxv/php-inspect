@@ -365,9 +365,15 @@ function injectMethodLogger($className, $srcOriginal) {
     $setEvent = getSource("LogHelper", "setEvent");
 
     foreach ($srcOriginal as $method => $values) {
+
+        // If the method being intercepted is the constructor, pass in the proper source
         if ($method == "__construct") {
             $toInject = getSource("LogHelper", "__construct");
+            $constructed = true;
             // $toInject['src'];
+        } elseif ($method == "__get") {
+            // XXX: Not logged. Should it be?
+            $toInject = 'if( $name == "__history" ) { return $name; }';
         } else {
             $toInject = str_replace('/*method*/', $method, $setEvent);
         }
@@ -380,9 +386,14 @@ function injectMethodLogger($className, $srcOriginal) {
         // For now, only non-static calls are logged
         if (!$isStatic) {
             debugMsg("Injecting logger code into $className::{$method}");
-
             runkit_method_redefine($className, $method, $values['paramsDefault'], $newcode);
         }
+    }
+
+    // The original object had no constructor
+    if (!isset($constructed)) {
+        $toInject = getSource("LogHelper", "__construct");
+        runkit_method_add($className, "__construct", "", $toInject);
     }
 }
  
@@ -412,4 +423,5 @@ function createLogHelper($className) {
     // Each call will be dispatched to the '__ref' prefixed object.
     // Additionally, remove all the original methods so that __call() is invoked.
     //setLoggerMethods($className, $destClassName, $srcOriginal);
+    debugMsg("Creating new $className object\n");
 }
